@@ -1,0 +1,11 @@
+eclipse.preferences.version=1
+environment/project/cdt.managedbuild.config.gnu.exe.debug.566211490/MY_ZKSW_PREBUILT_PATH/delimiter=;
+environment/project/cdt.managedbuild.config.gnu.exe.debug.566211490/MY_ZKSW_PREBUILT_PATH/operation=append
+environment/project/cdt.managedbuild.config.gnu.exe.debug.566211490/MY_ZKSW_PREBUILT_PATH/value=${eclipse_home}/configuration/zksw-update-1.0/zksw_prebuilt/
+environment/project/cdt.managedbuild.config.gnu.exe.debug.566211490/append=true
+environment/project/cdt.managedbuild.config.gnu.exe.debug.566211490/appendContributed=true
+environment/project/cdt.managedbuild.config.gnu.exe.release.1001661297/MY_ZKSW_PREBUILT_PATH/delimiter=;
+environment/project/cdt.managedbuild.config.gnu.exe.release.1001661297/MY_ZKSW_PREBUILT_PATH/operation=append
+environment/project/cdt.managedbuild.config.gnu.exe.release.1001661297/MY_ZKSW_PREBUILT_PATH/value=${eclipse_home}/configuration/zksw-update-1.0/zksw_prebuilt/
+environment/project/cdt.managedbuild.config.gnu.exe.release.1001661297/append=true
+environment/project/cdt.managedbuild.config.gnu.exe.release.1001661297/appendContributed=true
