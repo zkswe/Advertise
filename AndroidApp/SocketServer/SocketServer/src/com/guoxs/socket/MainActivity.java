@@ -4,9 +4,11 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -45,12 +47,19 @@ public class MainActivity extends Activity {
 	private final int MSG_PUSH_ERROR = 3;
 	private final int MSG_PUSH_NO_PHOTO = 4;
 	private final int MSG_CONNECT_NUM = 5;
+	private final int MSG_UPGRADE_FILE_PUSHING = 6;
+	private final int MSG_PUSH_UPGRADE_FILE_OK = 7;
+	private final int MSG_PUSH_UPGRADE_FILE_ERROR = 8;
+	private final int MSG_PUSH_NO_UPGRADE_FILE = 9;
 
 	private ImageView mImageView;
 	private TextView mPushHint;
 	private TextView mServerStatus;
 	private TextView mConnectNum;
 	
+	private TextView mUpgradeFileTextView;
+	private TextView mPushUpgradeHintTextView;
+
 	private Bitmap mCacheBmp;
 
 	private Uri mImageUri;
@@ -73,6 +82,15 @@ public class MainActivity extends Activity {
 			break;
 		case R.id.push_photo:
 			pushPhoto();
+			break;
+		case R.id.add_upgrade_file:
+			Intent i = new Intent(Intent.ACTION_GET_CONTENT);  
+			i.setType("*/*");//设置类型，我这里是任意类型，任意后缀的可以这样写。  
+            i.addCategory(Intent.CATEGORY_OPENABLE);  
+			startActivityForResult(i, 2);
+			break;
+		case R.id.push_upgrade_file:
+			pushUpgradeFile();
 			break;
 		}
 	}
@@ -176,6 +194,13 @@ public class MainActivity extends Activity {
 									mCacheBmp.compress(Bitmap.CompressFormat.JPEG, 100, baos);
 									ByteArrayInputStream fis = new ByteArrayInputStream(baos.toByteArray()); 
 									baos.close();
+									
+									byte[] type = new byte[3];
+									type[0] = 'j';
+									type[1] = 'p';
+									type[2] = 'g';
+									
+									dos.write(type);
 	
 									int size = fis.available();
 									Log.i(TAG, "size = " + size);
@@ -206,6 +231,72 @@ public class MainActivity extends Activity {
 						}
 					} else {
 						mHandler.sendEmptyMessage(MSG_PUSH_NO_PHOTO);
+					}
+				}
+			}.start();
+		}
+	}
+	
+	private void pushUpgradeFile() {
+		if (mIsStart && !mIsPushing && (System.currentTimeMillis() - mPushStartTime > 3000)) {
+			new Thread() {
+				@Override
+				public void run() {
+					if (mUpgradeFileTextView.getText().length() != 0) {
+						mPushStartTime = System.currentTimeMillis();
+						mIsPushing = true;
+						
+						mHandler.sendEmptyMessage(MSG_UPGRADE_FILE_PUSHING);
+						
+						// 一次最多发送4KB
+						final int BUFFER_SIZE = 4 * 1024;
+						byte[] data = new byte[BUFFER_SIZE];
+						
+						try {
+							Log.i(TAG, "pushUpgradeFile mSocketList size: " + mSocketList.size());
+							synchronized (mSocketList) {
+								for (Socket s : mSocketList) {
+									// 向client发送消息
+									DataOutputStream dos = new DataOutputStream(s.getOutputStream());
+	
+									InputStream in = new FileInputStream(new File(mUpgradeFileTextView.getText().toString()));
+									
+									byte[] type = new byte[3];
+									type[0] = 'i';
+									type[1] = 'm';
+									type[2] = 'g';
+									
+									dos.write(type);
+	
+									int size = in.available();
+									Log.i(TAG, "size = " + size);
+									dos.write(intToByteArray(size));
+									
+									int readLen = 0;
+									while (size > 0) {
+										readLen = in.read(data, 0, BUFFER_SIZE);
+//										Log.i(TAG, "readLen: " + readLen);
+										dos.write(data, 0, readLen);
+										dos.flush();
+										
+										size -= readLen;
+									}
+	
+									in.close();
+									Log.i(TAG, "write success!!!");
+								}
+							}
+							
+							mHandler.sendEmptyMessage(MSG_PUSH_UPGRADE_FILE_OK);
+						} catch (IOException e) {
+							e.printStackTrace();
+							Log.i(TAG, e.toString());
+							mHandler.sendEmptyMessage(MSG_PUSH_UPGRADE_FILE_ERROR);
+						} finally {
+							mIsPushing = false;
+						}
+					} else {
+						mHandler.sendEmptyMessage(MSG_PUSH_NO_UPGRADE_FILE);
 					}
 				}
 			}.start();
@@ -271,6 +362,18 @@ public class MainActivity extends Activity {
 			case MSG_CONNECT_NUM:
 				mConnectNum.setText(String.format("当前%d个设备连接", mSocketList.size()));
 				break;
+			case MSG_UPGRADE_FILE_PUSHING:
+				mPushUpgradeHintTextView.setText("升级包推送中...");
+				break;
+			case MSG_PUSH_UPGRADE_FILE_OK:
+				mPushUpgradeHintTextView.setText("升级包推送成功!");
+				break;
+			case MSG_PUSH_UPGRADE_FILE_ERROR:
+				mPushUpgradeHintTextView.setText("升级包推送失败!");
+				break;
+			case MSG_PUSH_NO_UPGRADE_FILE:
+				mPushUpgradeHintTextView.setText("请先1个升级包，再点击推送按钮");
+				break;
 			}
 		}
 	};
@@ -325,23 +428,30 @@ public class MainActivity extends Activity {
 		mPushHint = (TextView) findViewById(R.id.push_hint);
 		mServerStatus = (TextView) findViewById(R.id.server_status);
 		mConnectNum = (TextView) findViewById(R.id.connect_num);
+		mUpgradeFileTextView = (TextView) findViewById(R.id.upgrade_file_path);
+		mPushUpgradeHintTextView = (TextView) findViewById(R.id.push_upgrade_hint);
 	}
 
 	// 获取本地图片
 	@Override
 	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
 		if (resultCode == RESULT_OK) {
-			mImageUri = data.getData();
-			ContentResolver cr = getContentResolver();
-			try {
-				Bitmap bitmap = BitmapFactory.decodeStream(cr.openInputStream(mImageUri));
-				/* 将Bitmap设定到ImageView */
-				mImageView.setDrawingCacheEnabled(true);
-				mImageView.setImageBitmap(bitmap);
-				mCacheBmp = Bitmap.createBitmap(mImageView.getDrawingCache());
-				mImageView.setDrawingCacheEnabled(false);
-			} catch (FileNotFoundException e) {
-				Log.e(TAG, e.getMessage(), e);
+			if (requestCode == 1) {
+				mImageUri = data.getData();
+				ContentResolver cr = getContentResolver();
+				try {
+					Bitmap bitmap = BitmapFactory.decodeStream(cr.openInputStream(mImageUri));
+					/* 将Bitmap设定到ImageView */
+					mImageView.setDrawingCacheEnabled(true);
+					mImageView.setImageBitmap(bitmap);
+					mCacheBmp = Bitmap.createBitmap(mImageView.getDrawingCache());
+					mImageView.setDrawingCacheEnabled(false);
+				} catch (FileNotFoundException e) {
+					Log.e(TAG, e.getMessage(), e);
+				}
+			} else if (requestCode == 2) {
+				Uri uri = data.getData();
+				mUpgradeFileTextView.setText(uri.getPath().toString());
 			}
 		}
 
